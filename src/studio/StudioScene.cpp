@@ -41,7 +41,7 @@ GGraph* StudioScene::panel(GComponent* parent, float x, float y, float w, float 
 
 GBasicTextField* StudioScene::label(GComponent* parent, const std::string& text, float x, float y, float w, float h, float size, const Color3B& color) {
     auto* field = GBasicTextField::create();
-    field->setAutoSize(AutoSizeType::None);
+    field->setAutoSize(AutoSizeType::NONE);
     field->setSingleLine(true);
     field->setText(text);
     field->setFontSize(size);
