@@ -37,6 +37,17 @@ def patch_cocos(cocos: pathlib.Path):
             editbox.write_text(patched, encoding="utf-8")
             print("Patched Cocos Win64 UIEditBox indexes")
 
+    # FairyGUI's FUILabel intentionally overrides this BMFont hook. Its
+    # upstream header documents that Cocos2d-x must expose it as virtual.
+    label_header = cocos / "cocos" / "2d" / "CCLabel.h"
+    if label_header.exists():
+        text = label_header.read_text(encoding="utf-8")
+        needle = "    void updateBMFontScale();"
+        replacement = "    virtual void updateBMFontScale();"
+        if needle in text:
+            label_header.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+            print("Patched Cocos Label::updateBMFontScale for FairyGUI")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Fetch pinned Drayven third-party engine sources")
