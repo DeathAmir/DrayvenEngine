@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-import os
 import pathlib
 import shutil
 import subprocess
@@ -42,7 +41,9 @@ def main():
     checkout(FAIRYGUI_URL, FAIRYGUI_SHA, fairygui, args.clean)
 
     if not args.skip_cocos_deps:
-        run([sys.executable, "download-deps.py"], cwd=cocos)
+        # Cocos2d-x v4's legacy downloader prompts after extraction unless
+        # --remove-download is explicitly supplied. Keep CI deterministic.
+        run([sys.executable, "download-deps.py", "--remove-download", "yes"], cwd=cocos)
 
     marker = root / ".drayven-vendor-lock"
     marker.write_text(
