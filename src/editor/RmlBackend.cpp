@@ -105,10 +105,12 @@ bool Initialize(const char* title, int width, int height) {
 
 void Shutdown() {
     if (!data) return;
-    SDL_SetWindowHitTest(data->window, nullptr, nullptr);
-    SDL_GL_DestroyContext(data->gl);
-    SDL_DestroyWindow(data->window);
+    SDL_Window* window = data->window;
+    SDL_GLContext gl = data->gl;
+    SDL_SetWindowHitTest(window, nullptr, nullptr);
     data.reset();
+    SDL_GL_DestroyContext(gl);
+    SDL_DestroyWindow(window);
     SDL_Quit();
 }
 
