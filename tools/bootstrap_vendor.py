@@ -26,27 +26,56 @@ def checkout(url, sha, dst, clean=False):
     run(["git", "checkout", "--detach", "FETCH_HEAD"], cwd=dst)
 
 
+def replace_in_file(path: pathlib.Path, replacements):
+    if not path.exists():
+        return
+    text = path.read_text(encoding="utf-8")
+    patched = text
+    for old, new in replacements:
+        patched = patched.replace(old, new)
+    if patched != text:
+        path.write_text(patched, encoding="utf-8")
+        print(f"Patched {path}")
+
+
 def patch_cocos(cocos: pathlib.Path):
     # Cocos2d-x v4 predates the current Win64 SDK definitions used by the
     # hosted VS2022 runner. SetWindowLongPtrW must use the GWLP_* indexes.
-    editbox = cocos / "cocos" / "ui" / "UIEditBox" / "UIEditBoxImpl-win32.cpp"
-    if editbox.exists():
-        text = editbox.read_text(encoding="utf-8")
-        patched = text.replace("GWL_WNDPROC", "GWLP_WNDPROC").replace("GWL_USERDATA", "GWLP_USERDATA")
-        if patched != text:
-            editbox.write_text(patched, encoding="utf-8")
-            print("Patched Cocos Win64 UIEditBox indexes")
+    replace_in_file(
+        cocos / "cocos" / "ui" / "UIEditBox" / "UIEditBoxImpl-win32.cpp",
+        [("GWL_WNDPROC", "GWLP_WNDPROC"), ("GWL_USERDATA", "GWLP_USERDATA")],
+    )
 
     # FairyGUI's FUILabel intentionally overrides this BMFont hook. Its
     # upstream header documents that Cocos2d-x must expose it as virtual.
-    label_header = cocos / "cocos" / "2d" / "CCLabel.h"
-    if label_header.exists():
-        text = label_header.read_text(encoding="utf-8")
-        needle = "    void updateBMFontScale();"
-        replacement = "    virtual void updateBMFontScale();"
-        if needle in text:
-            label_header.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
-            print("Patched Cocos Label::updateBMFontScale for FairyGUI")
+    replace_in_file(
+        cocos / "cocos" / "2d" / "CCLabel.h",
+        [("    void updateBMFontScale();", "    virtual void updateBMFontScale();")],
+    )
+
+    # Cocos2d-x v4 used explicit template-ids in constructor/destructor names.
+    # C++20 removed that syntax, while Drayven intentionally remains C++20.
+    replace_in_file(
+        cocos / "cocos" / "base" / "CCVector.h",
+        [
+            ("    Vector<T>()", "    Vector()"),
+            ("    explicit Vector<T>(ssize_t capacity)", "    explicit Vector(ssize_t capacity)"),
+            ("    Vector<T>(std::initializer_list<T> list)", "    Vector(std::initializer_list<T> list)"),
+            ("    ~Vector<T>()", "    ~Vector()"),
+            ("    Vector<T>(const Vector<T>& other)", "    Vector(const Vector<T>& other)"),
+            ("    Vector<T>(Vector<T>&& other)", "    Vector(Vector<T>&& other)"),
+        ],
+    )
+    replace_in_file(
+        cocos / "cocos" / "base" / "CCMap.h",
+        [
+            ("    Map<K, V>()", "    Map()"),
+            ("    explicit Map<K, V>(ssize_t capacity)", "    explicit Map(ssize_t capacity)"),
+            ("    Map<K, V>(const Map<K, V>& other)", "    Map(const Map<K, V>& other)"),
+            ("    Map<K, V>(Map<K, V>&& other)", "    Map(Map<K, V>&& other)"),
+            ("    ~Map<K, V>()", "    ~Map()"),
+        ],
+    )
 
 
 def main():
