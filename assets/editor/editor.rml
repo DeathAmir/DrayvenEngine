@@ -1,0 +1,192 @@
+<rml>
+<head>
+  <title>Drayven Engine</title>
+  <link type="text/rcss" href="editor.rcss"/>
+</head>
+<body>
+<div id="app-root">
+  <div id="titlebar">
+    <div class="brand">
+      <div class="dragon-mark">
+        <div class="dragon-wing left-wing"></div>
+        <div class="dragon-wing right-wing"></div>
+        <div class="dragon-head"><div class="dragon-eye"></div></div>
+      </div>
+      <div class="brand-copy">
+        <div class="brand-name">DRAYVEN</div>
+        <div class="brand-sub">ENGINE 0.2</div>
+      </div>
+      <div id="project-badge" class="project-badge">NO PROJECT</div>
+    </div>
+    <div class="title-actions">
+      <button id="lang-toggle" class="lang-btn"><span id="lang-state">EN</span></button>
+      <button id="win-min" class="win-btn"><span class="icon-min"></span></button>
+      <button id="win-max" class="win-btn"><span class="icon-max"></span></button>
+      <button id="win-close" class="win-btn close"><span class="icon-close a"></span><span class="icon-close b"></span></button>
+    </div>
+  </div>
+
+  <div id="topnav">
+    <button id="nav-scene" class="nav selected">Scene</button>
+    <button id="nav-script" class="nav">Scripts</button>
+    <button id="nav-ui" class="nav">UI Creator</button>
+    <button id="nav-build" class="nav">Build</button>
+    <div class="nav-spacer"></div>
+    <div class="status-dot"></div><span class="status-text">Native C++ / SDL3 / RmlUi</span>
+  </div>
+
+  <div id="main-shell">
+    <div id="left-panel" class="side-panel">
+      <div class="panel-section project-section">
+        <div id="project-title" class="section-title">PROJECT</div>
+        <div id="current-project" class="project-name">No project loaded</div>
+        <input id="project-name" type="text" value="MyGame"/>
+        <input id="project-path" type="text" value="DrayvenProjects/MyGame"/>
+        <div class="row">
+          <button id="create-2d" class="primary small">+ 2D</button>
+          <button id="create-3d" class="primary small">+ 3D</button>
+        </div>
+        <input id="project-file" type="text" value="" placeholder="Path to project.drayven"/>
+        <button id="open-project" class="ghost full">Open Project</button>
+      </div>
+
+      <div class="panel-section hierarchy-section">
+        <div id="hierarchy-title" class="section-title">HIERARCHY</div>
+        <div id="hierarchy-list" class="scroll grow"><div class="muted pad">Create or open a project</div></div>
+      </div>
+    </div>
+
+    <div id="center-panel">
+      <div id="workspace-scene" class="workspace">
+        <div class="workspace-head">
+          <div><span class="crumb">Scene</span><span class="slash">/</span><span>Main.dscene</span></div>
+          <div class="workspace-actions"><button class="tool">2D</button><button class="tool active">3D</button><button class="tool">Play</button></div>
+        </div>
+        <div class="viewport">
+          <div class="viewport-axis"><span class="axis x">X</span><span class="axis y">Y</span><span class="axis z">Z</span></div>
+          <div class="viewport-card">
+            <div class="dragon-watermark">
+              <div class="dragon-mark big"><div class="dragon-wing left-wing"></div><div class="dragon-wing right-wing"></div><div class="dragon-head"><div class="dragon-eye"></div></div></div>
+            </div>
+            <div class="viewport-title">DRAYVEN VIEWPORT</div>
+            <div class="muted">2D / 3D scene workspace · renderer backend selectable</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="workspace-script" class="workspace hidden">
+        <div class="workspace-head">
+          <div><span id="script-title" class="crumb">DRYS / LUA WORKSPACE</span><span class="slash">/</span><span id="script-file-name">No file</span></div>
+          <div class="workspace-actions"><span id="script-language" class="lang-pill">DRYS</span><button id="save-script" class="primary small">Save</button></div>
+        </div>
+        <div class="script-layout">
+          <div class="script-sidebar">
+            <div class="mini-title">SCRIPTS</div>
+            <div id="script-list" class="scroll grow"><div class="muted pad">No scripts</div></div>
+          </div>
+          <div class="code-area">
+            <textarea id="script-source" class="code-editor" rows="22"></textarea>
+            <div class="code-toolbar">
+              <button id="transpile-cpp" class="primary">DRYS → C++</button>
+              <button id="transpile-lua" class="ghost">DRYS → Lua</button>
+            </div>
+            <div id="syntax-preview" class="syntax-box"><div class="muted pad">DRYS syntax preview</div></div>
+          </div>
+          <div class="generated-panel">
+            <div class="mini-title">GENERATED / HARDENED</div>
+            <div id="transpile-preview" class="generated-scroll"><div class="muted pad">Transpile to inspect generated output.</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="workspace-ui" class="workspace hidden">
+        <div class="workspace-head">
+          <div><span id="ui-title" class="crumb">UI CREATOR</span><span class="slash">/</span><span>Assets/UI/Main.rml</span></div>
+          <div class="workspace-actions"><span id="ui-count" class="lang-pill">0 widgets</span><button id="ui-save" class="primary small">Save UI</button></div>
+        </div>
+        <div class="ui-layout">
+          <div class="ui-tools">
+            <div class="mini-title">COMPONENTS</div>
+            <button id="ui-add-panel" class="component-btn"><span class="component-icon panel-i"></span>Panel</button>
+            <button id="ui-add-label" class="component-btn"><span class="component-icon text-i">T</span>Label</button>
+            <button id="ui-add-button" class="component-btn"><span class="component-icon button-i"></span>Button</button>
+            <button id="ui-add-input" class="component-btn"><span class="component-icon input-i"></span>Input</button>
+            <button id="ui-add-progress" class="component-btn"><span class="component-icon progress-i"></span>Progress</button>
+            <div class="mini-title spaced">PROPERTIES</div>
+            <label>Text</label><input id="ui-widget-text" type="text" value="Play"/>
+            <label>Handler</label><input id="ui-handler" type="text" value="on_play"/>
+            <button id="ui-clear" class="danger ghost full">Clear Canvas</button>
+          </div>
+          <div class="ui-stage-wrap">
+            <div class="stage-ruler">GAME UI · 1280 × 720</div>
+            <div id="ui-canvas" class="ui-canvas"><div class="ui-empty">Add a widget from the toolbar</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="workspace-build" class="workspace hidden">
+        <div class="workspace-head">
+          <div><span id="build-title" class="crumb">BUILD &amp; EXPORT</span><span class="slash">/</span><span>Native Pipeline</span></div>
+        </div>
+        <div class="build-grid">
+          <div class="build-card">
+            <div class="card-title">Compiler</div>
+            <label>Drayven Engine root</label><input id="engine-root" type="text" value=""/>
+            <label>Script backend</label>
+            <select id="script-backend"><option value="native" selected>DRYS → native C++</option><option value="luajit">DRYS/Lua → LuaJIT bytecode</option></select>
+            <label>Symbol hardening</label>
+            <select id="symbol-hardening"><option value="on" selected>Enabled</option><option value="off">Disabled</option></select>
+            <label>LuaJIT executable</label><input id="luajit-path" type="text" value="" placeholder="luajit / luajit.exe"/>
+            <label>UPX executable (optional desktop)</label><input id="upx-path" type="text" value="" placeholder="upx / upx.exe"/>
+            <button id="build-desktop" class="primary full tall">Build Desktop Library</button>
+          </div>
+          <div class="build-card android">
+            <div class="card-title"><span class="android-dot"></span>Android NDK</div>
+            <label>Android SDK path</label><input id="android-sdk" type="text" value="" placeholder="C:/Android/Sdk"/>
+            <label>Android NDK path</label><input id="android-ndk" type="text" value="" placeholder=".../ndk/28.x"/>
+            <label>ABI</label><select id="android-abi"><option value="arm64-v8a" selected>arm64-v8a</option><option value="armeabi-v7a">armeabi-v7a</option><option value="x86_64">x86_64</option></select>
+            <label>API Level</label><input id="android-api" type="text" value="24"/>
+            <button id="build-android" class="primary full tall">Build libDrayvenEngine.so</button>
+          </div>
+          <div class="build-card result">
+            <div class="card-title">Output</div>
+            <div class="output-caption">Last successful native artifact</div>
+            <div id="build-result" class="output-path">No build yet</div>
+            <div class="build-notes">
+              <div><span class="check">✓</span> DRYS native sources compile into the shared library</div>
+              <div><span class="check">✓</span> Lua source is converted to LuaJIT bytecode for release packs</div>
+              <div><span class="check">✓</span> Android SDK/NDK can be supplied manually</div>
+              <div><span class="check">✓</span> Assets/scripts are staged into .dpack</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="right-panel" class="side-panel">
+      <div class="panel-section inspector-section">
+        <div class="section-title">INSPECTOR</div>
+        <div id="inspector-name" class="inspector-name">Nothing selected</div>
+        <div class="transform-card">
+          <div class="mini-title">TRANSFORM</div>
+          <div class="xyz"><span class="x">X</span><span>0.00</span><span class="y">Y</span><span>0.00</span><span class="z">Z</span><span>0.00</span></div>
+        </div>
+        <div class="component-card">
+          <div class="mini-title">COMPONENTS</div>
+          <div id="inspector-components" class="muted">Select an entity</div>
+        </div>
+      </div>
+      <div class="panel-section assets-section">
+        <div id="assets-title" class="section-title">ASSETS</div>
+        <div id="assets-list" class="scroll grow"><div class="muted pad">No project assets</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="console">
+    <div class="console-head"><span id="console-title">CONSOLE</span><span class="console-filter">Engine · Build · DRYS · LuaJIT</span></div>
+    <div id="console-lines" class="console-lines"></div>
+  </div>
+</div>
+</body>
+</rml>

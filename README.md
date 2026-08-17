@@ -1,32 +1,60 @@
-<p align="center">
-  <img src="assets/icons/drayven_dragon.svg" width="150" alt="Drayven Engine green dragon logo" />
-</p>
-<h1 align="center">Drayven Engine</h1>
-<p align="center"><b>C++ game engine + ImGui editor + DRYS native scripting</b><br/>Copyright © 2026 DeathAmir</p>
+<div align="center">
 
-<p align="center">
-  <img alt="C++20" src="https://img.shields.io/badge/C%2B%2B-20-00599C" />
-  <img alt="CMake" src="https://img.shields.io/badge/CMake-3.25%2B-064F8C" />
-  <img alt="SDL3" src="https://img.shields.io/badge/SDL-3.4.12-1f6feb" />
-  <img alt="Editor" src="https://img.shields.io/badge/Editor-Dear%20ImGui-35c46a" />
-  <img alt="License" src="https://img.shields.io/badge/License-MIT-green" />
-</p>
+# 🐉 Drayven Engine
 
-Drayven Engine is a native C++20 game-engine foundation focused on fast iteration, readable project layout and native shipping. The editor uses Dear ImGui docking, projects can target 2D or 3D workflows, and gameplay can be written in **DRYS / Drayven Script**, which is transpiled to C++ before the final native build.
+### Native C++ game engine + RmlUi editor + DRYS / LuaJIT scripting
+
+**By DeathAmir**
+
+Windows · Linux · Android NDK · 2D · 3D · Native plugins · Encrypted asset packs
+
+</div>
+
+---
+
+Drayven Engine is a C++20 game-engine foundation focused on native builds, a compact editor, script-to-native workflows and portable SDK packaging. Version 0.2 replaces the original Dear ImGui editor shell with **RmlUi**, adds a custom borderless editor chrome, adds a visual game UI creator, expands DRYS into native/Lua backends, and adds a real Android NDK shared-library pipeline.
 
 ## Highlights
 
-- Unity-style dockable editor shell: Hierarchy, Inspector, Asset Browser, Console, DRYS editor and Build/Export window.
-- 2D and 3D project templates with entity transforms and component-ready scene data.
-- DRYS lexer + transpiler with variables, functions, conditions, loops, expressions and game API bindings.
-- `drayvenc` CLI for project creation, transpilation, asset packing and platform staging.
-- Protected `.dpack` asset containers for textures, audio, fonts and other runtime data.
-- Desktop CMake flow for Windows and Linux.
-- Android exporter that validates Android SDK + NDK requirements before generating staging files.
-- English/Persian editor localization hooks; Persian visual-order shaping helper and optional Vazirmatn font loading.
-- GitHub Actions matrix builds and automatic release artifacts from `main`.
+- **RmlUi Editor** — CSS/RML driven editor shell instead of raw ImGui widgets.
+- **Custom window chrome** — Drayven titlebar, drag/resize hit testing, custom minimize/maximize/close controls.
+- **Visible green dragon branding** — editor titlebar + viewport mark + packaged SVG source.
+- **UI Creator** — panel, label, button, input and progress widgets with named event handlers; saves `.rml` + `.dui.json`.
+- **DRYS** — simple game-oriented language with C++ and Lua output backends.
+- **Native script build** — DRYS → generated C++ → compiled into `DrayvenEngine.dll`, `libDrayvenEngine.so`, or Android `libDrayvenEngine.so`.
+- **LuaJIT mode** — direct `.lua` or DRYS → Lua → LuaJIT bytecode; release packs do not need to contain the original Lua source.
+- **`drayvenluac`** — Drayven wrapper around LuaJIT bytecode compilation.
+- **Android NDK exporter** — explicit SDK/NDK paths, ABI and API level; CI validates ARM64.
+- **Native plugin ABI** — load `.dll` / `.so` engine extensions using a small C interface.
+- **`.dpack` asset integrity** — authenticated AES-256-GCM packaging when Mbed TLS is enabled; legacy v1 packs remain readable.
+- **Optional native integrations** — Vulkan SDK, Eigen and libcurl can be enabled only when a project needs them.
+- **UPX integration** — optional post-build compression for desktop binaries.
+- **Persian + English editor** — RTL visual shaping path and optional Vazirmatn font loading. The repository intentionally does not redistribute a font binary.
 
-## Build the engine
+## Project layout
+
+```text
+DrayvenEngine/
+├─ assets/
+│  ├─ editor/             RmlUi editor documents/styles
+│  ├─ fonts/              optional user-provided fonts
+│  └─ icons/              Drayven branding source
+├─ cmake/                 dependency/build modules
+├─ docs/                  scripting, Android, UI, plugin docs
+├─ include/drayven/       public C++ SDK
+├─ src/
+│  ├─ build/              native exporter
+│  ├─ cli/                drayvenc + drayvenluac
+│  ├─ core/               project, UI, crypto, net, plugins
+│  ├─ drys/               DRYS lexer/transpiler
+│  ├─ editor/             RmlUi editor + SDL3 backend
+│  ├─ pack/               .dpack archive system
+│  └─ runtime/            runtime, renderers, LuaJIT loader
+├─ templates/             2D/3D/plugin templates
+└─ tools/                 LuaJIT helper builds
+```
+
+## Build the SDK
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -34,16 +62,31 @@ cmake --build build --config Release --parallel
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-Executables are generated under `build/bin`.
+Useful switches:
 
-## DRYS in 30 seconds
+```text
+-DDRAYVEN_BUILD_EDITOR=ON|OFF
+-DDRAYVEN_BUILD_TESTS=ON|OFF
+-DDRAYVEN_ENABLE_MBEDTLS=ON|OFF
+-DDRAYVEN_ENABLE_VULKAN=ON|OFF
+-DDRAYVEN_ENABLE_EIGEN=ON|OFF
+-DDRAYVEN_ENABLE_NETWORKING=ON|OFF
+```
+
+## Create a project
+
+```bash
+drayvenc new MyGame MyGame 3d
+```
+
+Example DRYS:
 
 ```drys
 game Player
-var speed = 5
+var speed = 6
 
 fn start()
-    log("Hello from Drayven")
+    log("Player ready")
 end
 
 fn update(dt)
@@ -53,67 +96,84 @@ fn update(dt)
 end
 ```
 
-Transpile manually:
+## DRYS → native C++
 
 ```bash
-drayvenc transpile Scripts/Main.drys -o Build/Generated/Main.cpp
+drayvenc transpile MyGame/Scripts/Player.drys --to cpp --harden -o Player.cpp
 ```
 
-See [DRYS language guide](docs/DRYS.md).
-
-## Create a project
+For a project build:
 
 ```bash
-drayvenc new ./Games/MyGame MyGame 2d
-drayvenc new ./Games/My3DGame My3DGame 3d
+drayvenc build MyGame/MyGame.drayven --target desktop --script native --engine /path/to/DrayvenEngine
 ```
 
-Each project contains `Assets/`, `Scripts/`, `Scenes/` and `Build/`. In the editor you can choose the project path and name from the Welcome window.
+The generated native DRYS translation units are added directly to the shared `DrayvenEngine` target.
 
-## Assets and release packaging
+## LuaJIT
 
-`drayvenc pack` recursively packages project assets into a `.dpack` container. DRYS is translated to C++ into `Build/Generated`, so release builds do not need to contain readable script source.
+Direct Lua and DRYS-to-Lua are supported:
 
 ```bash
-drayvenc pack Assets Build/GameAssets.dpack my-project-key
+drayvenc build MyGame/MyGame.drayven --target desktop --script luajit --luajit /path/to/luajit
 ```
 
-The included stream protection is intended to deter casual extraction; projects requiring strong anti-tamper guarantees should layer platform signing and a dedicated authenticated-encryption/key-management solution on top.
+Compile one file:
 
-## Persian / فارسی
-
-The editor includes English and Persian strings. Place `Vazirmatn-Regular.ttf` under `assets/fonts/` to enable the intended Persian glyph coverage. The font binary is not vendored by this repository; keep its upstream license when redistributing it.
+```bash
+drayvenluac --luajit /path/to/luajit input.lua output.dluac
+```
 
 ## Android
 
-Android export expects the SDK and NDK to be installed. Set `ANDROID_SDK_ROOT` or `ANDROID_HOME` and run:
-
 ```bash
-drayvenc build MyGame.drayven --target android
+drayvenc build MyGame/MyGame.drayven \
+  --target android \
+  --script native \
+  --engine /path/to/DrayvenEngine \
+  --sdk /path/to/Android/Sdk \
+  --ndk /path/to/Android/Sdk/ndk/28.x \
+  --abi arm64-v8a \
+  --api 24
 ```
 
-Read [Android export notes](docs/ANDROID.md) before shipping an APK/AAB.
-
-## Repository layout
+Main output:
 
 ```text
-include/drayven/       Public engine API
-src/core/              Project, scene, localization
-src/runtime/           SDL3 runtime and renderer entry points
-src/editor/            Dear ImGui editor
-src/drys/              DRYS lexer/transpiler
-src/pack/              .dpack container
-src/cli/               drayvenc
-assets/                 Editor/runtime assets
-templates/              2D/3D starter projects
-docs/                   Language and architecture docs
-.github/workflows/       CI + release automation
+libDrayvenEngine.so
 ```
 
-## Current scope
+When using native DRYS mode, translated scripts are part of that shared library.
 
-This first native foundation intentionally leaves full production rendering, physics, animation, networking, importers, prefab serialization, material graphs, visual scripting and signed Android APK/AAB generation for subsequent engine milestones. The current 2D/3D renderer entry points are scaffolding for those backends rather than a finished Unity-equivalent renderer.
+## Editor UI Creator
 
----
+Open **UI Creator**, add components, enter handler names such as `on_play`, and save. Drayven emits:
 
-**Drayven Engine — By DeathAmir**
+```text
+Assets/UI/Main.rml
+Assets/UI/Main.dui.json
+```
+
+The runtime/editor share the same RmlUi document model, so the UI created in the editor is not a separate proprietary mockup format.
+
+## Dependencies
+
+Core dependencies are intentionally modular. SDL3 is the platform layer. RmlUi + FreeType are used by the editor/UI stack. Mbed TLS backs authenticated asset encryption. LuaJIT is prepared as a separately built tool/runtime. Vulkan, Eigen and libcurl are optional.
+
+See [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md).
+
+## Documentation
+
+- [`docs/SCRIPTING.md`](docs/SCRIPTING.md) — DRYS + LuaJIT dictionary
+- [`docs/ANDROID.md`](docs/ANDROID.md) — SDK/NDK and `.so` export
+- [`docs/UI_BUILDER.md`](docs/UI_BUILDER.md) — visual UI workflow
+- [`docs/PLUGIN_API.md`](docs/PLUGIN_API.md) — native/DRYS/Lua extensions
+- [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md) — dependency matrix
+
+## Release-code note
+
+Generated identifiers and LuaJIT bytecode are release-format features, not a security boundary. Keep secrets and authoritative game logic on trusted services when appropriate.
+
+## License / copyright
+
+Copyright © DeathAmir. See [`LICENSE`](LICENSE) for this repository's license and the third-party projects' own licenses when redistributing their binaries.

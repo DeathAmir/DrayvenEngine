@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(DrayvenEngine VERSION 0.1.0 LANGUAGES C CXX)
+project(DrayvenEngine VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -11,66 +11,99 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
 option(DRAYVEN_BUILD_EDITOR "Build the Drayven Editor" ON)
 option(DRAYVEN_BUILD_TESTS "Build engine tests" ON)
-option(DRAYVEN_FETCH_DEPS "Fetch SDL3/Dear ImGui from upstream" ON)
+option(DRAYVEN_FETCH_DEPS "Fetch required third-party dependencies" ON)
+option(DRAYVEN_ENABLE_EIGEN "Enable Eigen integration" OFF)
+option(DRAYVEN_ENABLE_NETWORKING "Enable libcurl HTTP client" OFF)
+option(DRAYVEN_ENABLE_MBEDTLS "Enable Mbed TLS crypto helpers" ON)
+option(DRAYVEN_ENABLE_VULKAN "Enable Vulkan integration when SDK is available" ON)
+option(DRAYVEN_BUILD_SHARED_ENGINE "Build libDrayvenEngine shared runtime" ON)
+set(DRAYVEN_GAME_SOURCES "" CACHE STRING "Semicolon-separated generated game sources compiled into DrayvenEngine")
+set(DRAYVEN_LUAJIT_ROOT "" CACHE PATH "Optional LuaJIT prebuilt root")
 
-include(FetchContent)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+include(DrayvenDependencies)
+drayven_setup_dependencies()
 
-if(DRAYVEN_FETCH_DEPS)
-  set(SDL_SHARED ON CACHE BOOL "" FORCE)
-  set(SDL_STATIC OFF CACHE BOOL "" FORCE)
-  set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
-  FetchContent_Declare(SDL3
-    GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-    GIT_TAG release-3.4.12
-    GIT_SHALLOW TRUE)
-  FetchContent_MakeAvailable(SDL3)
-
-  FetchContent_Declare(imgui
-    GIT_REPOSITORY https://github.com/ocornut/imgui.git
-    GIT_TAG docking
-    GIT_SHALLOW TRUE)
-  FetchContent_GetProperties(imgui)
-  if(NOT imgui_POPULATED)
-    FetchContent_Populate(imgui)
-  endif()
-
-  find_package(OpenGL REQUIRED)
-  add_library(drayven_imgui STATIC
-    ${imgui_SOURCE_DIR}/imgui.cpp
-    ${imgui_SOURCE_DIR}/imgui_draw.cpp
-    ${imgui_SOURCE_DIR}/imgui_tables.cpp
-    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
-    ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp)
-  target_include_directories(drayven_imgui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
-  target_link_libraries(drayven_imgui PUBLIC SDL3::SDL3 OpenGL::GL)
-endif()
-
-add_library(DrayvenCore STATIC
+set(DRAYVEN_CORE_SOURCES
   src/core/Project.cpp
   src/core/Scene.cpp
   src/core/Localization.cpp
+  src/core/UiDocument.cpp
+  src/core/Plugin.cpp
+  src/core/Net.cpp
+  src/core/Crypto.cpp
   src/pack/PackArchive.cpp
   src/drys/Lexer.cpp
-  src/drys/Transpiler.cpp)
+  src/drys/Transpiler.cpp
+  src/build/BuildPipeline.cpp)
+
+add_library(DrayvenCore STATIC ${DRAYVEN_CORE_SOURCES})
 target_include_directories(DrayvenCore PUBLIC include)
-target_compile_definitions(DrayvenCore PUBLIC DRAYVEN_VERSION=\"${PROJECT_VERSION}\")
+target_compile_definitions(DrayvenCore PUBLIC DRAYVEN_VERSION="${PROJECT_VERSION}")
 if(MSVC)
   target_compile_options(DrayvenCore PRIVATE /utf-8)
+else()
+  target_compile_options(DrayvenCore PRIVATE -fvisibility=hidden)
+endif()
+if(UNIX)
+  target_link_libraries(DrayvenCore PUBLIC ${CMAKE_DL_LIBS})
+endif()
+
+if(TARGET Eigen3::Eigen)
+  target_link_libraries(DrayvenCore PUBLIC Eigen3::Eigen)
+  target_compile_definitions(DrayvenCore PUBLIC DRAYVEN_HAS_EIGEN=1)
+endif()
+if(TARGET CURL::libcurl)
+  target_link_libraries(DrayvenCore PRIVATE CURL::libcurl)
+  target_compile_definitions(DrayvenCore PRIVATE DRAYVEN_HAS_CURL=1)
+endif()
+if(TARGET MbedTLS::mbedcrypto)
+  target_link_libraries(DrayvenCore PRIVATE MbedTLS::mbedcrypto)
+  target_compile_definitions(DrayvenCore PRIVATE DRAYVEN_HAS_MBEDTLS=1)
+elseif(TARGET mbedcrypto)
+  target_link_libraries(DrayvenCore PRIVATE mbedcrypto)
+  target_compile_definitions(DrayvenCore PRIVATE DRAYVEN_HAS_MBEDTLS=1)
 endif()
 
 add_library(DrayvenRuntime STATIC
   src/runtime/Application.cpp
   src/runtime/Renderer2D.cpp
-  src/runtime/Renderer3D.cpp)
+  src/runtime/Renderer3D.cpp
+  src/runtime/LuaRuntime.cpp)
 target_include_directories(DrayvenRuntime PUBLIC include)
 target_link_libraries(DrayvenRuntime PUBLIC DrayvenCore)
+if(TARGET SDL3::SDL3)
+  target_link_libraries(DrayvenRuntime PUBLIC SDL3::SDL3)
+endif()
+if(TARGET OpenGL::GL)
+  target_link_libraries(DrayvenRuntime PUBLIC OpenGL::GL)
+endif()
+if(ANDROID)
+  find_library(DRAYVEN_GLES3_LIBRARY GLESv3)
+  if(DRAYVEN_GLES3_LIBRARY)
+    target_link_libraries(DrayvenRuntime PUBLIC ${DRAYVEN_GLES3_LIBRARY})
+  endif()
+endif()
+if(TARGET Vulkan::Vulkan)
+  target_link_libraries(DrayvenRuntime PUBLIC Vulkan::Vulkan)
+  target_compile_definitions(DrayvenRuntime PUBLIC DRAYVEN_HAS_VULKAN=1)
+endif()
 if(MSVC)
   target_compile_options(DrayvenRuntime PRIVATE /utf-8)
 endif()
-if(DRAYVEN_FETCH_DEPS)
-  target_link_libraries(DrayvenRuntime PUBLIC SDL3::SDL3 OpenGL::GL)
+
+if(DRAYVEN_BUILD_SHARED_ENGINE)
+  add_library(DrayvenEngine SHARED src/runtime/EngineShared.cpp)
+  target_include_directories(DrayvenEngine PUBLIC include)
+  target_link_libraries(DrayvenEngine PRIVATE DrayvenRuntime)
+  target_compile_definitions(DrayvenEngine PRIVATE DRAYVEN_ENGINE_BUILD=1)
+  if(DRAYVEN_GAME_SOURCES)
+    target_sources(DrayvenEngine PRIVATE ${DRAYVEN_GAME_SOURCES})
+  endif()
+  set_target_properties(DrayvenEngine PROPERTIES OUTPUT_NAME "DrayvenEngine")
+  if(MSVC)
+    target_compile_options(DrayvenEngine PRIVATE /utf-8)
+  endif()
 endif()
 
 add_executable(drayvenc src/cli/main.cpp)
@@ -79,24 +112,42 @@ if(MSVC)
   target_compile_options(drayvenc PRIVATE /utf-8)
 endif()
 
+add_executable(drayvenluac src/cli/luac.cpp)
+target_link_libraries(drayvenluac PRIVATE DrayvenCore)
+if(MSVC)
+  target_compile_options(drayvenluac PRIVATE /utf-8)
+endif()
+
 if(DRAYVEN_BUILD_EDITOR)
+  add_library(drayven_rml_backend STATIC
+    src/editor/RmlBackend.cpp
+    "${DRAYVEN_RMLUI_SOURCE_DIR}/Backends/RmlUi_Platform_SDL.cpp"
+    "${DRAYVEN_RMLUI_SOURCE_DIR}/Backends/RmlUi_Renderer_GL3.cpp")
+  target_include_directories(drayven_rml_backend PRIVATE
+    include
+    "${DRAYVEN_RMLUI_SOURCE_DIR}/Backends")
+  target_compile_definitions(drayven_rml_backend PRIVATE RMLUI_SDL_VERSION_MAJOR=3)
+  target_link_libraries(drayven_rml_backend PUBLIC RmlUi::RmlUi SDL3::SDL3)
+  if(UNIX AND NOT APPLE)
+    target_link_libraries(drayven_rml_backend PRIVATE ${CMAKE_DL_LIBS})
+  endif()
+
   add_executable(DrayvenEditor
     src/editor/main.cpp
     src/editor/EditorApp.cpp
-    src/editor/EditorPanels.cpp
-    src/editor/EditorBuild.cpp
     src/editor/Persian.cpp)
-  target_include_directories(DrayvenEditor PRIVATE include)
-  target_link_libraries(DrayvenEditor PRIVATE DrayvenRuntime)
+  target_include_directories(DrayvenEditor PRIVATE
+    include
+    "${DRAYVEN_RMLUI_SOURCE_DIR}/Backends")
+  target_link_libraries(DrayvenEditor PRIVATE DrayvenRuntime drayven_rml_backend RmlUi::RmlUi)
+  target_compile_definitions(DrayvenEditor PRIVATE DRAYVEN_EDITOR_ASSET_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/assets")
   if(MSVC)
     target_compile_options(DrayvenEditor PRIVATE /utf-8)
   endif()
-  if(DRAYVEN_FETCH_DEPS)
-    target_link_libraries(DrayvenEditor PRIVATE drayven_imgui)
-  endif()
-  if(WIN32)
+  if(WIN32 AND TARGET SDL3::SDL3-shared)
     add_custom_command(TARGET DrayvenEditor POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL3::SDL3-shared> $<TARGET_FILE_DIR:DrayvenEditor>)
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      $<TARGET_FILE:SDL3::SDL3-shared> $<TARGET_FILE_DIR:DrayvenEditor>)
   endif()
 endif()
 
@@ -110,13 +161,20 @@ if(DRAYVEN_BUILD_TESTS)
   add_test(NAME drayven_tests COMMAND drayven_tests)
 endif()
 
-install(TARGETS DrayvenCore DrayvenRuntime drayvenc
+install(TARGETS DrayvenCore DrayvenRuntime drayvenc drayvenluac
   RUNTIME DESTINATION bin
   LIBRARY DESTINATION bin
   ARCHIVE DESTINATION lib)
+if(DRAYVEN_BUILD_SHARED_ENGINE)
+  install(TARGETS DrayvenEngine
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION bin
+    ARCHIVE DESTINATION lib)
+endif()
 if(DRAYVEN_BUILD_EDITOR)
   install(TARGETS DrayvenEditor RUNTIME DESTINATION bin)
 endif()
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY templates/ DESTINATION share/drayven/templates)
 install(DIRECTORY assets/ DESTINATION share/drayven/assets)
+install(DIRECTORY cmake/ DESTINATION share/drayven/cmake)

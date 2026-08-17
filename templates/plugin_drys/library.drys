@@ -1,0 +1,5 @@
+game ExampleLibrary
+
+fn hello()
+    log("Hello from a reusable DRYS module")
+end

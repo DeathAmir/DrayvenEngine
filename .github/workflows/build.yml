@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  desktop:
     strategy:
       fail-fast: false
       matrix:
@@ -23,40 +23,140 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: >-
           sudo apt-get update && sudo apt-get install -y
-          build-essential git make pkg-config cmake ninja-build gnome-desktop-testing
-          libasound2-dev libpulse-dev libaudio-dev libfribidi-dev libjack-dev libsndio-dev
-          libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev
-          libxss-dev libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev libgl1-mesa-dev
-          libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev
-          libthai-dev libusb-1.0-0-dev libpipewire-0.3-dev libwayland-dev libdecor-0-dev
-          liburing-dev
-      - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-      - name: Build
-        run: cmake --build build --config Release --parallel 2
-      - name: Test
-        run: ctest --test-dir build -C Release --output-on-failure
-      - name: Stage
+          build-essential git make pkg-config cmake ninja-build
+          libgl1-mesa-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev
+          libxi-dev libxfixes-dev libxkbcommon-dev libxss-dev libxtst-dev
+          libasound2-dev libpulse-dev libwayland-dev libdecor-0-dev
+
+      - name: Enable MSVC command environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build LuaJIT on Windows
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          git clone --depth 1 --branch v2.1 https://github.com/LuaJIT/LuaJIT.git third_party\LuaJIT
+          cd third_party\LuaJIT\src
+          call msvcbuild.bat
+
+      - name: Build LuaJIT on Linux
+        if: runner.os == 'Linux'
         shell: bash
         run: |
-          mkdir -p dist
-          cp -r build/bin dist/bin
-          cp -r templates dist/templates
-          cp README.md LICENSE dist/
+          git clone --depth 1 --branch v2.1 https://github.com/LuaJIT/LuaJIT.git third_party/LuaJIT
+          make -C third_party/LuaJIT amalg -j2
+
+      - name: Cache CMake dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: drayven-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DDRAYVEN_ENABLE_MBEDTLS=ON
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 2
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Stage SDK
+        shell: bash
+        run: |
+          mkdir -p dist/bin dist/lib
+          cp -r build/bin/* dist/bin/ || true
+          cp -r build/lib/* dist/lib/ || true
+          cp -r include assets templates docs cmake tools dist/
+          cp CMakeLists.txt README.md LICENSE dist/
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp third_party/LuaJIT/src/luajit.exe dist/bin/
+            cp third_party/LuaJIT/src/lua51.dll dist/bin/
+            mkdir -p dist/bin/lua
+            cp -r third_party/LuaJIT/src/jit dist/bin/lua/
+          else
+            cp third_party/LuaJIT/src/luajit dist/bin/
+            cp -a third_party/LuaJIT/src/libluajit.so* dist/bin/ || true
+            mkdir -p dist/bin/lua
+            cp -r third_party/LuaJIT/src/jit dist/bin/lua/
+          fi
           cmake -E tar cfv "${{ matrix.artifact }}.zip" --format=zip dist
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}.zip
           if-no-files-found: error
 
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install host tools
+        run: sudo apt-get update && sudo apt-get install -y build-essential git make ninja-build cmake
+
+      - name: Build LuaJIT Android arm64
+        shell: bash
+        run: |
+          git clone --depth 1 --branch v2.1 https://github.com/LuaJIT/LuaJIT.git third_party/LuaJIT
+          NDK="$ANDROID_NDK_LATEST_HOME"
+          BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          CC="$BIN/aarch64-linux-android24-clang"
+          make -C third_party/LuaJIT -j2 \
+            CROSS="$BIN/aarch64-linux-android-" \
+            STATIC_CC="$CC" \
+            DYNAMIC_CC="$CC -fPIC" \
+            TARGET_LD="$CC" \
+            TARGET_AR="$BIN/llvm-ar rcus" \
+            TARGET_STRIP="$BIN/llvm-strip" \
+            TARGET_SYS=Linux
+
+      - name: Configure Android NDK
+        shell: bash
+        run: |
+          cmake -S . -B build-android -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-24 \
+            -DDRAYVEN_BUILD_EDITOR=OFF \
+            -DDRAYVEN_BUILD_TESTS=OFF \
+            -DDRAYVEN_ENABLE_VULKAN=OFF \
+            -DDRAYVEN_ENABLE_MBEDTLS=ON \
+            -DDRAYVEN_BUILD_SHARED_ENGINE=ON
+
+      - name: Build Android engine
+        run: cmake --build build-android --target DrayvenEngine --parallel 2
+
+      - name: Stage Android SDK
+        shell: bash
+        run: |
+          mkdir -p dist-android/lib/arm64-v8a dist-android/include dist-android/tools
+          SO="$(find build-android -name 'libDrayvenEngine.so' -type f | head -1)"
+          test -n "$SO"
+          cp "$SO" dist-android/lib/arm64-v8a/
+          cp third_party/LuaJIT/src/libluajit.so dist-android/lib/arm64-v8a/ || cp third_party/LuaJIT/src/libluajit-5.1.so* dist-android/lib/arm64-v8a/
+          cp -r include/drayven dist-android/include/
+          cp tools/build_luajit_android.sh dist-android/tools/
+          cp docs/ANDROID.md docs/SCRIPTING.md LICENSE dist-android/
+          cmake -E tar cfv "DrayvenEngine-Android-arm64-v8a.zip" --format=zip dist-android
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DrayvenEngine-Android-arm64-v8a
+          path: DrayvenEngine-Android-arm64-v8a.zip
+          if-no-files-found: error
+
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: build
+    needs: [desktop, android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -66,7 +166,7 @@ jobs:
       - name: Publish automatic release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.1.${{ github.run_number }}
-          name: Drayven Engine v0.1.${{ github.run_number }}
+          tag_name: v0.2.${{ github.run_number }}
+          name: Drayven Engine v0.2.${{ github.run_number }}
           generate_release_notes: true
           files: release-assets/*.zip

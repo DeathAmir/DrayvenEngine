@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.25)
+project(DrayvenExamplePlugin LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 20)
+if(NOT DEFINED DRAYVEN_ENGINE_ROOT)
+  message(FATAL_ERROR "Pass -DDRAYVEN_ENGINE_ROOT=/path/to/DrayvenEngine")
+endif()
+add_library(ExamplePlugin SHARED plugin.cpp)
+target_include_directories(ExamplePlugin PRIVATE "${DRAYVEN_ENGINE_ROOT}/include")
