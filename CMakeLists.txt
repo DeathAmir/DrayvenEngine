@@ -9,6 +9,14 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
+function(drayven_cpp20 target_name)
+  set_target_properties(${target_name} PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO)
+  target_compile_features(${target_name} PUBLIC cxx_std_20)
+endfunction()
+
 option(DRAYVEN_BUILD_STUDIO "Build the FairyGUI Drayven Studio editor" ON)
 option(DRAYVEN_BUILD_TESTS "Build engine tests" ON)
 option(DRAYVEN_FETCH_DEPS "Fetch Drayven utility dependencies" ON)
@@ -62,6 +70,7 @@ set(DRAYVEN_RUNTIME_SOURCES
   src/runtime/LuaRuntime.cpp)
 
 add_library(DrayvenCore STATIC ${DRAYVEN_CORE_SOURCES})
+drayven_cpp20(DrayvenCore)
 target_include_directories(DrayvenCore PUBLIC include)
 target_compile_definitions(DrayvenCore PUBLIC DRAYVEN_VERSION="${PROJECT_VERSION}")
 if(MSVC)
@@ -89,6 +98,7 @@ elseif(TARGET mbedcrypto)
 endif()
 
 add_library(DrayvenRuntime STATIC ${DRAYVEN_RUNTIME_SOURCES})
+drayven_cpp20(DrayvenRuntime)
 target_include_directories(DrayvenRuntime PUBLIC include)
 target_link_libraries(DrayvenRuntime PUBLIC DrayvenCore)
 if(DRAYVEN_WITH_COCOS)
@@ -101,6 +111,7 @@ endif()
 
 if(DRAYVEN_BUILD_SHARED_ENGINE)
   add_library(DrayvenEngine SHARED src/runtime/EngineShared.cpp)
+  drayven_cpp20(DrayvenEngine)
   target_include_directories(DrayvenEngine PUBLIC include)
   target_link_libraries(DrayvenEngine PRIVATE DrayvenRuntime)
   target_compile_definitions(DrayvenEngine PRIVATE DRAYVEN_ENGINE_BUILD=1)
@@ -118,6 +129,7 @@ if(DRAYVEN_BUILD_STATIC_ENGINE)
     src/runtime/EngineShared.cpp
     ${DRAYVEN_CORE_SOURCES}
     ${DRAYVEN_RUNTIME_SOURCES})
+  drayven_cpp20(DrayvenEngineStatic)
   target_include_directories(DrayvenEngineStatic PUBLIC include)
   target_compile_definitions(DrayvenEngineStatic PUBLIC DRAYVEN_VERSION="${PROJECT_VERSION}")
   if(DRAYVEN_GAME_SOURCES)
@@ -155,12 +167,14 @@ if(DRAYVEN_BUILD_STATIC_ENGINE)
 endif()
 
 add_executable(drayvenc src/cli/main.cpp)
+drayven_cpp20(drayvenc)
 target_link_libraries(drayvenc PRIVATE DrayvenCore)
 if(MSVC)
   target_compile_options(drayvenc PRIVATE /utf-8)
 endif()
 
 add_executable(drayvenluac src/cli/luac.cpp)
+drayven_cpp20(drayvenluac)
 target_link_libraries(drayvenluac PRIVATE DrayvenCore)
 if(MSVC)
   target_compile_options(drayvenluac PRIVATE /utf-8)
@@ -174,6 +188,7 @@ if(DRAYVEN_BUILD_STUDIO AND NOT ANDROID)
     src/studio/main.cpp
     src/studio/AppDelegate.cpp
     src/studio/StudioScene.cpp)
+  drayven_cpp20(DrayvenEditor)
   target_include_directories(DrayvenEditor PRIVATE
     include
     src/studio
@@ -189,6 +204,7 @@ endif()
 if(DRAYVEN_BUILD_TESTS)
   enable_testing()
   add_executable(drayven_tests tests/test_main.cpp)
+  drayven_cpp20(drayven_tests)
   target_link_libraries(drayven_tests PRIVATE DrayvenCore)
   if(MSVC)
     target_compile_options(drayven_tests PRIVATE /utf-8)
