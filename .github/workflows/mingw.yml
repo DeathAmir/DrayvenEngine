@@ -1,0 +1,56 @@
+name: Build MinGW Static SDK
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mingw-x64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MinGW toolchain
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64 ninja-build cmake git make zip
+
+      - name: Configure MinGW static SDK
+        shell: bash
+        run: |
+          cmake -S . -B build-mingw -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/mingw-x64.cmake \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DDRAYVEN_BUILD_EDITOR=OFF \
+            -DDRAYVEN_BUILD_TESTS=OFF \
+            -DDRAYVEN_BUILD_SHARED_ENGINE=OFF \
+            -DDRAYVEN_BUILD_STATIC_ENGINE=ON \
+            -DDRAYVEN_ENABLE_VULKAN=OFF \
+            -DDRAYVEN_ENABLE_NETWORKING=OFF \
+            -DDRAYVEN_ENABLE_MBEDTLS=ON
+
+      - name: Build libDrayvenEngine.a
+        run: cmake --build build-mingw --target DrayvenEngineStatic --parallel 2
+
+      - name: Stage MinGW SDK
+        shell: bash
+        run: |
+          mkdir -p dist-mingw/lib dist-mingw/include dist-mingw/cmake
+          LIB="$(find build-mingw -type f -name 'libDrayvenEngine.a' | head -1)"
+          test -n "$LIB"
+          cp "$LIB" dist-mingw/lib/libDrayvenEngine.a
+          find build-mingw -type f \( -name 'libSDL3*.a' -o -name 'libmbed*.a' \) -exec cp -n {} dist-mingw/lib/ \; || true
+          cp -r include/drayven dist-mingw/include/
+          cp cmake/toolchains/mingw-x64.cmake dist-mingw/cmake/
+          cp README.md LICENSE dist-mingw/
+          cmake -E tar cfv DrayvenEngine-MinGW-x64-static.zip --format=zip dist-mingw
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DrayvenEngine-MinGW-x64-static
+          path: DrayvenEngine-MinGW-x64-static.zip
+          if-no-files-found: error
