@@ -1,0 +1,13 @@
+game WorldController
+
+var speed = 4
+
+fn start()
+    log("3D project started")
+end
+
+fn update(dt)
+    if key_down("W")
+        move_y(speed * dt)
+    end
+end

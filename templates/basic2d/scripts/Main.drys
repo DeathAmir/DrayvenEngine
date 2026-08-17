@@ -1,0 +1,16 @@
+game PlayerController
+
+var speed = 320
+
+fn start()
+    log("2D project started")
+end
+
+fn update(dt)
+    if key_down("D")
+        move_x(speed * dt)
+    end
+    if key_down("A")
+        move_x(-speed * dt)
+    end
+end

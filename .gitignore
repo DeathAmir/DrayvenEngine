@@ -1,0 +1,16 @@
+build/
+out/
+.vscode/
+.idea/
+*.user
+*.suo
+*.VC.db
+*.dll
+*.so
+*.dylib
+*.exe
+*.pdb
+*.obj
+*.o
+*.dpack
+.DS_Store
