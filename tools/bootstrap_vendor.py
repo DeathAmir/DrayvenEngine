@@ -26,6 +26,18 @@ def checkout(url, sha, dst, clean=False):
     run(["git", "checkout", "--detach", "FETCH_HEAD"], cwd=dst)
 
 
+def patch_cocos(cocos: pathlib.Path):
+    # Cocos2d-x v4 predates the current Win64 SDK definitions used by the
+    # hosted VS2022 runner. SetWindowLongPtrW must use the GWLP_* indexes.
+    editbox = cocos / "cocos" / "ui" / "UIEditBox" / "UIEditBoxImpl-win32.cpp"
+    if editbox.exists():
+        text = editbox.read_text(encoding="utf-8")
+        patched = text.replace("GWL_WNDPROC", "GWLP_WNDPROC").replace("GWL_USERDATA", "GWLP_USERDATA")
+        if patched != text:
+            editbox.write_text(patched, encoding="utf-8")
+            print("Patched Cocos Win64 UIEditBox indexes")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Fetch pinned Drayven third-party engine sources")
     parser.add_argument("--root", default="vendor")
@@ -44,6 +56,8 @@ def main():
         # Cocos2d-x v4's legacy downloader prompts after extraction unless
         # --remove-download is explicitly supplied. Keep CI deterministic.
         run([sys.executable, "download-deps.py", "--remove-download", "yes"], cwd=cocos)
+
+    patch_cocos(cocos)
 
     marker = root / ".drayven-vendor-lock"
     marker.write_text(
