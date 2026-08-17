@@ -56,6 +56,9 @@ add_library(DrayvenCore STATIC
   src/drys/Transpiler.cpp)
 target_include_directories(DrayvenCore PUBLIC include)
 target_compile_definitions(DrayvenCore PUBLIC DRAYVEN_VERSION=\"${PROJECT_VERSION}\")
+if(MSVC)
+  target_compile_options(DrayvenCore PRIVATE /utf-8)
+endif()
 
 add_library(DrayvenRuntime STATIC
   src/runtime/Application.cpp
@@ -63,12 +66,18 @@ add_library(DrayvenRuntime STATIC
   src/runtime/Renderer3D.cpp)
 target_include_directories(DrayvenRuntime PUBLIC include)
 target_link_libraries(DrayvenRuntime PUBLIC DrayvenCore)
+if(MSVC)
+  target_compile_options(DrayvenRuntime PRIVATE /utf-8)
+endif()
 if(DRAYVEN_FETCH_DEPS)
   target_link_libraries(DrayvenRuntime PUBLIC SDL3::SDL3 OpenGL::GL)
 endif()
 
 add_executable(drayvenc src/cli/main.cpp)
 target_link_libraries(drayvenc PRIVATE DrayvenCore)
+if(MSVC)
+  target_compile_options(drayvenc PRIVATE /utf-8)
+endif()
 
 if(DRAYVEN_BUILD_EDITOR)
   add_executable(DrayvenEditor
@@ -79,6 +88,9 @@ if(DRAYVEN_BUILD_EDITOR)
     src/editor/Persian.cpp)
   target_include_directories(DrayvenEditor PRIVATE include)
   target_link_libraries(DrayvenEditor PRIVATE DrayvenRuntime)
+  if(MSVC)
+    target_compile_options(DrayvenEditor PRIVATE /utf-8)
+  endif()
   if(DRAYVEN_FETCH_DEPS)
     target_link_libraries(DrayvenEditor PRIVATE drayven_imgui)
   endif()
@@ -92,6 +104,9 @@ if(DRAYVEN_BUILD_TESTS)
   enable_testing()
   add_executable(drayven_tests tests/test_main.cpp)
   target_link_libraries(drayven_tests PRIVATE DrayvenCore)
+  if(MSVC)
+    target_compile_options(drayven_tests PRIVATE /utf-8)
+  endif()
   add_test(NAME drayven_tests COMMAND drayven_tests)
 endif()
 

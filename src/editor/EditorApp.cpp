@@ -20,7 +20,7 @@ bool EditorApp::init(){
     io.ConfigFlags|=ImGuiConfigFlags_NavEnableKeyboard|ImGuiConfigFlags_DockingEnable|ImGuiConfigFlags_ViewportsEnable;
     io.IniFilename="drayven_editor.ini";
     if(std::filesystem::exists("assets/fonts/Vazirmatn-Regular.ttf"))
-        io.Fonts->AddFontFromFileTTF("assets/fonts/Vazirmatn-Regular.ttf",18.f,nullptr,io.Fonts->GetGlyphRangesArabic());
+        io.Fonts->AddFontFromFileTTF("assets/fonts/Vazirmatn-Regular.ttf",18.f);
     else io.Fonts->AddFontDefault();
     ImGui::StyleColorsDark();
     ImGui_ImplSDL3_InitForOpenGL(m_app.window(),SDL_GL_GetCurrentContext());
