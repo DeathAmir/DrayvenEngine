@@ -25,7 +25,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: >-
@@ -34,11 +33,9 @@ jobs:
           libgl1-mesa-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev
           libxi-dev libxfixes-dev libxkbcommon-dev libxss-dev libxtst-dev
           libasound2-dev libpulse-dev libwayland-dev libdecor-0-dev
-
       - name: Enable MSVC command environment
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
-
       - name: Build LuaJIT on Windows
         if: runner.os == 'Windows'
         shell: cmd
@@ -46,29 +43,23 @@ jobs:
           git clone --depth 1 --branch v2.1 https://github.com/LuaJIT/LuaJIT.git third_party\LuaJIT
           cd third_party\LuaJIT\src
           call msvcbuild.bat
-
       - name: Build LuaJIT on Linux
         if: runner.os == 'Linux'
         shell: bash
         run: |
           git clone --depth 1 --branch v2.1 https://github.com/LuaJIT/LuaJIT.git third_party/LuaJIT
           make -C third_party/LuaJIT amalg -j2
-
       - name: Cache CMake dependencies
         uses: actions/cache@v4
         with:
           path: build/_deps
           key: drayven-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
-
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DDRAYVEN_ENABLE_MBEDTLS=ON
-
       - name: Build
         run: cmake --build build --config Release --parallel 2
-
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
-
       - name: Stage SDK
         shell: bash
         run: |
@@ -89,7 +80,6 @@ jobs:
             cp -r third_party/LuaJIT/src/jit dist/bin/lua/
           fi
           cmake -E tar cfv "${{ matrix.artifact }}.zip" --format=zip dist
-
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
@@ -101,10 +91,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Install host tools
         run: sudo apt-get update && sudo apt-get install -y build-essential git make ninja-build cmake
-
       - name: Build LuaJIT Android arm64
         shell: bash
         run: |
@@ -120,7 +108,6 @@ jobs:
             TARGET_AR="$BIN/llvm-ar rcus" \
             TARGET_STRIP="$BIN/llvm-strip" \
             TARGET_SYS=Linux
-
       - name: Configure Android NDK
         shell: bash
         run: |
@@ -134,10 +121,8 @@ jobs:
             -DDRAYVEN_ENABLE_VULKAN=OFF \
             -DDRAYVEN_ENABLE_MBEDTLS=ON \
             -DDRAYVEN_BUILD_SHARED_ENGINE=ON
-
       - name: Build Android engine
         run: cmake --build build-android --target DrayvenEngine --parallel 2
-
       - name: Stage Android SDK
         shell: bash
         run: |
@@ -150,7 +135,6 @@ jobs:
           cp tools/build_luajit_android.sh dist-android/tools/
           cp docs/ANDROID.md docs/SCRIPTING.md LICENSE dist-android/
           cmake -E tar cfv "DrayvenEngine-Android-arm64-v8a.zip" --format=zip dist-android
-
       - uses: actions/upload-artifact@v4
         with:
           name: DrayvenEngine-Android-arm64-v8a
@@ -170,88 +154,45 @@ jobs:
         shell: bash
         run: |
           python3 - <<'PY'
-          import json, os, pathlib, subprocess, urllib.error, urllib.parse, urllib.request, zipfile
-
-          token = os.environ['GH_TOKEN']
-          repo = os.environ['GITHUB_REPOSITORY']
-          run_id = os.environ['SOURCE_RUN_ID']
-          tag = os.environ['RELEASE_TAG']
-          api = f'https://api.github.com/repos/{repo}'
-          headers = {
-              'Authorization': f'Bearer {token}',
-              'Accept': 'application/vnd.github+json',
-              'X-GitHub-Api-Version': '2022-11-28',
-              'User-Agent': 'DrayvenEngine-Release'
-          }
-
+          import json, os, pathlib, subprocess, time, urllib.error, urllib.parse, urllib.request, zipfile
+          token=os.environ['GH_TOKEN']; repo=os.environ['GITHUB_REPOSITORY']; run_id=os.environ['SOURCE_RUN_ID']; tag=os.environ['RELEASE_TAG']
+          api=f'https://api.github.com/repos/{repo}'
+          headers={'Authorization':f'Bearer {token}','Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','User-Agent':'DrayvenEngine-Release'}
+          def open_retry(req, attempts=12):
+              for i in range(attempts):
+                  try: return urllib.request.urlopen(req, timeout=90)
+                  except urllib.error.HTTPError as e:
+                      if e.code not in (429,500,502,503,504) or i==attempts-1: raise
+                      delay=int(e.headers.get('Retry-After','0') or 0) or min(3*(i+1),30); print('GitHub API retry',e.code,'in',delay,'s'); time.sleep(delay)
+                  except urllib.error.URLError:
+                      if i==attempts-1: raise
+                      time.sleep(min(3*(i+1),30))
           def get_json(url):
-              req = urllib.request.Request(url, headers=headers)
-              with urllib.request.urlopen(req) as res:
-                  return json.load(res)
-
-          def json_request(url, payload, method='POST'):
-              body = json.dumps(payload).encode()
-              h = dict(headers); h['Content-Type'] = 'application/json'
-              req = urllib.request.Request(url, data=body, headers=h, method=method)
-              with urllib.request.urlopen(req) as res:
-                  return json.load(res) if res.length != 0 else {}
-
-          def download_artifact(url, output):
-              subprocess.run([
-                  'curl', '-fsSL',
-                  '-H', f'Authorization: Bearer {token}',
-                  '-H', 'Accept: application/vnd.github+json',
-                  '-H', 'X-GitHub-Api-Version: 2022-11-28',
-                  url, '-o', str(output)
-              ], check=True)
-
-          run = get_json(f'{api}/actions/runs/{run_id}')
-          target_sha = run['head_sha']
-          artifacts = get_json(f'{api}/actions/runs/{run_id}/artifacts?per_page=100')['artifacts']
-          out = pathlib.Path('release-assets'); out.mkdir(exist_ok=True)
-          selected = [a for a in artifacts if a['name'].startswith('DrayvenEngine-') and not a.get('expired')]
-          if len(selected) < 3:
-              raise SystemExit(f'Expected 3 Drayven artifacts, found {len(selected)}')
+              with open_retry(urllib.request.Request(url,headers=headers)) as res: return json.load(res)
+          def json_request(url,payload,method='POST'):
+              h=dict(headers); h['Content-Type']='application/json'; req=urllib.request.Request(url,data=json.dumps(payload).encode(),headers=h,method=method)
+              with open_retry(req) as res: return json.load(res) if res.length!=0 else {}
+          def download_artifact(url,output):
+              subprocess.run(['curl','--retry','12','--retry-delay','3','--retry-all-errors','-fsSL','-H',f'Authorization: Bearer {token}','-H','Accept: application/vnd.github+json','-H','X-GitHub-Api-Version: 2022-11-28',url,'-o',str(output)],check=True)
+          run=get_json(f'{api}/actions/runs/{run_id}'); target_sha=run['head_sha']
+          artifacts=get_json(f'{api}/actions/runs/{run_id}/artifacts?per_page=100')['artifacts']; out=pathlib.Path('release-assets'); out.mkdir(exist_ok=True)
+          selected=[a for a in artifacts if a['name'].startswith('DrayvenEngine-') and not a.get('expired')]
+          if len(selected)<3: raise SystemExit(f'Expected 3 Drayven artifacts, found {len(selected)}')
           for a in selected:
-              archive = out / f"{a['name']}.artifact.zip"
-              download_artifact(a['archive_download_url'], archive)
-              with zipfile.ZipFile(archive) as z:
-                  z.extractall(out)
+              archive=out/f"{a['name']}.artifact.zip"; download_artifact(a['archive_download_url'],archive)
+              with zipfile.ZipFile(archive) as z: z.extractall(out)
               archive.unlink()
-
-          release = None
-          try:
-              release = get_json(f'{api}/releases/tags/{urllib.parse.quote(tag)}')
+          try: release=get_json(f'{api}/releases/tags/{urllib.parse.quote(tag)}')
           except urllib.error.HTTPError as e:
-              if e.code != 404: raise
-          if release is None:
-              release = json_request(f'{api}/releases', {
-                  'tag_name': tag,
-                  'target_commitish': target_sha,
-                  'name': f'Drayven Engine {tag}',
-                  'body': 'Automated Windows, Linux and Android ARM64 SDK release.',
-                  'draft': False,
-                  'prerelease': False,
-                  'generate_release_notes': True
-              })
-          else:
-              for asset in release.get('assets', []):
-                  if asset['name'].startswith('DrayvenEngine-'):
-                      req = urllib.request.Request(f"{api}/releases/assets/{asset['id']}", headers=headers, method='DELETE')
-                      urllib.request.urlopen(req).read()
-
-          upload_base = release['upload_url'].split('{', 1)[0]
-          files = sorted(out.glob('DrayvenEngine-*.zip'))
-          if len(files) < 3:
-              raise SystemExit(f'Expected 3 release ZIPs, found {len(files)}')
+              if e.code!=404: raise
+              release=json_request(f'{api}/releases',{'tag_name':tag,'target_commitish':target_sha,'name':f'Drayven Engine {tag}','body':'Automated Windows, Linux and Android ARM64 SDK release.','draft':False,'prerelease':False,'generate_release_notes':True})
+          existing={a['name'] for a in release.get('assets',[])}; upload_base=release['upload_url'].split('{',1)[0]; files=sorted(out.glob('DrayvenEngine-*.zip'))
+          if len(files)<3: raise SystemExit(f'Expected 3 release ZIPs, found {len(files)}')
           for file in files:
-              url = upload_base + '?' + urllib.parse.urlencode({'name': file.name})
-              h = dict(headers); h['Content-Type'] = 'application/zip'
-              req = urllib.request.Request(url, data=file.read_bytes(), headers=h, method='POST')
-              with urllib.request.urlopen(req) as res:
-                  asset = json.load(res)
-                  print('uploaded', asset['name'], asset['browser_download_url'])
-          print('release', release['html_url'])
+              if file.name in existing: print('already uploaded',file.name); continue
+              url=upload_base+'?'+urllib.parse.urlencode({'name':file.name}); h=dict(headers); h['Content-Type']='application/zip'; req=urllib.request.Request(url,data=file.read_bytes(),headers=h,method='POST')
+              with open_retry(req) as res: asset=json.load(res); print('uploaded',asset['name'],asset['browser_download_url'])
+          print('release',release['html_url'])
           PY
 
   recovery_release:
@@ -265,91 +206,44 @@ jobs:
         shell: bash
         run: |
           python3 - <<'PY'
-          import json, os, pathlib, re, subprocess, urllib.error, urllib.parse, urllib.request, zipfile
-
-          msg = os.environ['COMMIT_MESSAGE']
-          run_match = re.search(r'source-run=(\d+)', msg)
-          tag_match = re.search(r'tag=([^\s]+)', msg)
-          if not run_match or not tag_match:
-              raise SystemExit('release-only commit must include source-run=<id> tag=<tag>')
-          run_id = run_match.group(1)
-          tag = tag_match.group(1)
-          token = os.environ['GH_TOKEN']
-          repo = os.environ['GITHUB_REPOSITORY']
-          api = f'https://api.github.com/repos/{repo}'
-          headers = {
-              'Authorization': f'Bearer {token}',
-              'Accept': 'application/vnd.github+json',
-              'X-GitHub-Api-Version': '2022-11-28',
-              'User-Agent': 'DrayvenEngine-Release-Recovery'
-          }
-
+          import json, os, pathlib, re, subprocess, time, urllib.error, urllib.parse, urllib.request, zipfile
+          msg=os.environ['COMMIT_MESSAGE']; rm=re.search(r'source-run=(\d+)',msg); tm=re.search(r'tag=([^\s]+)',msg)
+          if not rm or not tm: raise SystemExit('release-only commit must include source-run=<id> tag=<tag>')
+          run_id=rm.group(1); tag=tm.group(1); token=os.environ['GH_TOKEN']; repo=os.environ['GITHUB_REPOSITORY']; api=f'https://api.github.com/repos/{repo}'
+          headers={'Authorization':f'Bearer {token}','Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','User-Agent':'DrayvenEngine-Release-Recovery'}
+          def open_retry(req, attempts=12):
+              for i in range(attempts):
+                  try: return urllib.request.urlopen(req, timeout=90)
+                  except urllib.error.HTTPError as e:
+                      if e.code not in (429,500,502,503,504) or i==attempts-1: raise
+                      delay=int(e.headers.get('Retry-After','0') or 0) or min(3*(i+1),30); print('GitHub API retry',e.code,'in',delay,'s'); time.sleep(delay)
+                  except urllib.error.URLError:
+                      if i==attempts-1: raise
+                      time.sleep(min(3*(i+1),30))
           def get_json(url):
-              req = urllib.request.Request(url, headers=headers)
-              with urllib.request.urlopen(req) as res:
-                  return json.load(res)
-
-          def json_request(url, payload, method='POST'):
-              body = json.dumps(payload).encode()
-              h = dict(headers); h['Content-Type'] = 'application/json'
-              req = urllib.request.Request(url, data=body, headers=h, method=method)
-              with urllib.request.urlopen(req) as res:
-                  return json.load(res) if res.length != 0 else {}
-
-          def download_artifact(url, output):
-              subprocess.run([
-                  'curl', '-fsSL',
-                  '-H', f'Authorization: Bearer {token}',
-                  '-H', 'Accept: application/vnd.github+json',
-                  '-H', 'X-GitHub-Api-Version: 2022-11-28',
-                  url, '-o', str(output)
-              ], check=True)
-
-          run = get_json(f'{api}/actions/runs/{run_id}')
-          target_sha = run['head_sha']
-          artifacts = get_json(f'{api}/actions/runs/{run_id}/artifacts?per_page=100')['artifacts']
-          out = pathlib.Path('release-assets'); out.mkdir(exist_ok=True)
-          selected = [a for a in artifacts if a['name'].startswith('DrayvenEngine-') and not a.get('expired')]
-          if len(selected) < 3:
-              raise SystemExit(f'Expected 3 Drayven artifacts, found {len(selected)}')
+              with open_retry(urllib.request.Request(url,headers=headers)) as res: return json.load(res)
+          def json_request(url,payload,method='POST'):
+              h=dict(headers); h['Content-Type']='application/json'; req=urllib.request.Request(url,data=json.dumps(payload).encode(),headers=h,method=method)
+              with open_retry(req) as res: return json.load(res) if res.length!=0 else {}
+          def download_artifact(url,output):
+              subprocess.run(['curl','--retry','12','--retry-delay','3','--retry-all-errors','-fsSL','-H',f'Authorization: Bearer {token}','-H','Accept: application/vnd.github+json','-H','X-GitHub-Api-Version: 2022-11-28',url,'-o',str(output)],check=True)
+          run=get_json(f'{api}/actions/runs/{run_id}'); target_sha=run['head_sha']
+          artifacts=get_json(f'{api}/actions/runs/{run_id}/artifacts?per_page=100')['artifacts']; out=pathlib.Path('release-assets'); out.mkdir(exist_ok=True)
+          selected=[a for a in artifacts if a['name'].startswith('DrayvenEngine-') and not a.get('expired')]
+          if len(selected)<3: raise SystemExit(f'Expected 3 Drayven artifacts, found {len(selected)}')
           for a in selected:
-              archive = out / f"{a['name']}.artifact.zip"
-              download_artifact(a['archive_download_url'], archive)
-              with zipfile.ZipFile(archive) as z:
-                  z.extractall(out)
+              archive=out/f"{a['name']}.artifact.zip"; download_artifact(a['archive_download_url'],archive)
+              with zipfile.ZipFile(archive) as z: z.extractall(out)
               archive.unlink()
-
-          release = None
-          try:
-              release = get_json(f'{api}/releases/tags/{urllib.parse.quote(tag)}')
+          try: release=get_json(f'{api}/releases/tags/{urllib.parse.quote(tag)}')
           except urllib.error.HTTPError as e:
-              if e.code != 404: raise
-          if release is None:
-              release = json_request(f'{api}/releases', {
-                  'tag_name': tag,
-                  'target_commitish': target_sha,
-                  'name': f'Drayven Engine {tag}',
-                  'body': 'Windows x64, Linux x64 and Android ARM64 SDKs from validated GitHub Actions artifacts.',
-                  'draft': False,
-                  'prerelease': False,
-                  'generate_release_notes': True
-              })
-          else:
-              for asset in release.get('assets', []):
-                  if asset['name'].startswith('DrayvenEngine-'):
-                      req = urllib.request.Request(f"{api}/releases/assets/{asset['id']}", headers=headers, method='DELETE')
-                      urllib.request.urlopen(req).read()
-
-          upload_base = release['upload_url'].split('{', 1)[0]
-          files = sorted(out.glob('DrayvenEngine-*.zip'))
-          if len(files) < 3:
-              raise SystemExit(f'Expected 3 release ZIPs, found {len(files)}')
+              if e.code!=404: raise
+              release=json_request(f'{api}/releases',{'tag_name':tag,'target_commitish':target_sha,'name':f'Drayven Engine {tag}','body':'Windows x64, Linux x64 and Android ARM64 SDKs from validated GitHub Actions artifacts.','draft':False,'prerelease':False,'generate_release_notes':True})
+          existing={a['name'] for a in release.get('assets',[])}; upload_base=release['upload_url'].split('{',1)[0]; files=sorted(out.glob('DrayvenEngine-*.zip'))
+          if len(files)<3: raise SystemExit(f'Expected 3 release ZIPs, found {len(files)}')
           for file in files:
-              url = upload_base + '?' + urllib.parse.urlencode({'name': file.name})
-              h = dict(headers); h['Content-Type'] = 'application/zip'
-              req = urllib.request.Request(url, data=file.read_bytes(), headers=h, method='POST')
-              with urllib.request.urlopen(req) as res:
-                  asset = json.load(res)
-                  print('uploaded', asset['name'], asset['browser_download_url'])
-          print('release', release['html_url'])
+              if file.name in existing: print('already uploaded',file.name); continue
+              url=upload_base+'?'+urllib.parse.urlencode({'name':file.name}); h=dict(headers); h['Content-Type']='application/zip'; req=urllib.request.Request(url,data=file.read_bytes(),headers=h,method='POST')
+              with open_retry(req) as res: asset=json.load(res); print('uploaded',asset['name'],asset['browser_download_url'])
+          print('release',release['html_url'])
           PY
