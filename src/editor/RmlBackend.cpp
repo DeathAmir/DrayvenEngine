@@ -88,14 +88,14 @@ bool Initialize(const char* title, int width, int height) {
     SDL_SetWindowMinimumSize(window, 960, 620);
     SDL_SetWindowHitTest(window, hitTest, nullptr);
 
-    if (!RmlGL3::Initialize()) {
+    data = std::make_unique<Data>();
+    if (!data->renderer) {
+        data.reset();
         SDL_GL_DestroyContext(gl);
         SDL_DestroyWindow(window);
         SDL_Quit();
         return false;
     }
-
-    data = std::make_unique<Data>();
     data->window = window;
     data->gl = gl;
     data->system.SetWindow(window);
