@@ -24,7 +24,7 @@ function(drayven_setup_dependencies)
 
   if(DRAYVEN_BUILD_EDITOR)
     if(DRAYVEN_FETCH_DEPS)
-      FetchContent_Declare(nuklear GIT_REPOSITORY https://github.com/Immediate-Mode-UI/Nuklear.git GIT_TAG 4.13.3 GIT_SHALLOW TRUE)
+      FetchContent_Declare(nuklear GIT_REPOSITORY https://github.com/Immediate-Mode-UI/Nuklear.git GIT_TAG v4.13.3 GIT_SHALLOW TRUE)
       FetchContent_MakeAvailable(nuklear)
       set(DRAYVEN_NUKLEAR_SOURCE_DIR "${nuklear_SOURCE_DIR}" PARENT_SCOPE)
     else()
