@@ -1,56 +1,42 @@
-name: Build MinGW Static SDK
+name: Drayven MinGW Core SDK
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
-
-permissions:
-  contents: read
 
 jobs:
   mingw-x64:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
       - name: Install MinGW toolchain
-        run: sudo apt-get update && sudo apt-get install -y mingw-w64 ninja-build cmake git make zip
-
-      - name: Configure MinGW static SDK
-        shell: bash
         run: |
-          cmake -S . -B build-mingw -G Ninja \
-            -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/mingw-x64.cmake \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DDRAYVEN_BUILD_EDITOR=OFF \
-            -DDRAYVEN_BUILD_TESTS=OFF \
-            -DDRAYVEN_BUILD_SHARED_ENGINE=OFF \
-            -DDRAYVEN_BUILD_STATIC_ENGINE=ON \
-            -DDRAYVEN_ENABLE_VULKAN=OFF \
-            -DDRAYVEN_ENABLE_NETWORKING=OFF \
-            -DDRAYVEN_ENABLE_MBEDTLS=ON
+          sudo apt-get update
+          sudo apt-get install -y mingw-w64 ninja-build
+
+      - name: Configure core-only MinGW SDK
+        run: >-
+          cmake -S . -B build-mingw -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/mingw-x64.cmake
+          -DDRAYVEN_BUILD_STUDIO=OFF
+          -DDRAYVEN_BUILD_TESTS=OFF
+          -DDRAYVEN_WITH_COCOS=OFF
+          -DDRAYVEN_BUILD_SHARED_ENGINE=OFF
+          -DDRAYVEN_BUILD_STATIC_ENGINE=ON
+          -DDRAYVEN_ENABLE_MBEDTLS=ON
 
       - name: Build libDrayvenEngine.a
-        run: cmake --build build-mingw --target DrayvenEngineStatic --parallel 2
+        run: cmake --build build-mingw --target DrayvenEngineStatic --parallel 4
 
       - name: Stage MinGW SDK
-        shell: bash
-        run: |
-          mkdir -p dist-mingw/lib dist-mingw/include dist-mingw/cmake
-          LIB="$(find build-mingw -type f -name 'libDrayvenEngine.a' | head -1)"
-          test -n "$LIB"
-          cp "$LIB" dist-mingw/lib/libDrayvenEngine.a
-          find build-mingw -type f \( -name 'libSDL3*.a' -o -name 'libmbed*.a' \) -exec cp -n {} dist-mingw/lib/ \; || true
-          cp -r include/drayven dist-mingw/include/
-          cp cmake/toolchains/mingw-x64.cmake dist-mingw/cmake/
-          cp README.md LICENSE dist-mingw/
-          cmake -E tar cfv DrayvenEngine-MinGW-x64-static.zip --format=zip dist-mingw
+        run: python3 tools/stage_sdk.py --build build-mingw --output dist/mingw-x64 --platform windows-mingw-x64
 
       - uses: actions/upload-artifact@v4
         with:
-          name: DrayvenEngine-MinGW-x64-static
-          path: DrayvenEngine-MinGW-x64-static.zip
+          name: DrayvenEngine-MinGW-x64-core
+          path: dist/mingw-x64
           if-no-files-found: error
+          compression-level: 6
