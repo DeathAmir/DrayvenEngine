@@ -17,6 +17,7 @@ option(DRAYVEN_ENABLE_NETWORKING "Enable libcurl HTTP client" OFF)
 option(DRAYVEN_ENABLE_MBEDTLS "Enable Mbed TLS crypto helpers" ON)
 option(DRAYVEN_ENABLE_VULKAN "Enable Vulkan integration when SDK is available" ON)
 option(DRAYVEN_BUILD_SHARED_ENGINE "Build libDrayvenEngine shared runtime" ON)
+option(DRAYVEN_BUILD_STATIC_ENGINE "Build a single-file static Drayven engine archive" ON)
 set(DRAYVEN_GAME_SOURCES "" CACHE STRING "Semicolon-separated generated game sources compiled into DrayvenEngine")
 set(DRAYVEN_LUAJIT_ROOT "" CACHE PATH "Optional LuaJIT prebuilt root")
 
@@ -37,6 +38,12 @@ set(DRAYVEN_CORE_SOURCES
   src/drys/Transpiler.cpp
   src/build/BuildPipeline.cpp)
 
+set(DRAYVEN_RUNTIME_SOURCES
+  src/runtime/Application.cpp
+  src/runtime/Renderer2D.cpp
+  src/runtime/Renderer3D.cpp
+  src/runtime/LuaRuntime.cpp)
+
 add_library(DrayvenCore STATIC ${DRAYVEN_CORE_SOURCES})
 target_include_directories(DrayvenCore PUBLIC include)
 target_compile_definitions(DrayvenCore PUBLIC DRAYVEN_VERSION="${PROJECT_VERSION}")
@@ -48,7 +55,6 @@ endif()
 if(UNIX)
   target_link_libraries(DrayvenCore PUBLIC ${CMAKE_DL_LIBS})
 endif()
-
 if(TARGET Eigen3::Eigen)
   target_link_libraries(DrayvenCore PUBLIC Eigen3::Eigen)
   target_compile_definitions(DrayvenCore PUBLIC DRAYVEN_HAS_EIGEN=1)
@@ -65,15 +71,13 @@ elseif(TARGET mbedcrypto)
   target_compile_definitions(DrayvenCore PRIVATE DRAYVEN_HAS_MBEDTLS=1)
 endif()
 
-add_library(DrayvenRuntime STATIC
-  src/runtime/Application.cpp
-  src/runtime/Renderer2D.cpp
-  src/runtime/Renderer3D.cpp
-  src/runtime/LuaRuntime.cpp)
+add_library(DrayvenRuntime STATIC ${DRAYVEN_RUNTIME_SOURCES})
 target_include_directories(DrayvenRuntime PUBLIC include)
 target_link_libraries(DrayvenRuntime PUBLIC DrayvenCore)
 if(TARGET SDL3::SDL3)
   target_link_libraries(DrayvenRuntime PUBLIC SDL3::SDL3)
+elseif(TARGET SDL3::SDL3-static)
+  target_link_libraries(DrayvenRuntime PUBLIC SDL3::SDL3-static)
 endif()
 if(TARGET OpenGL::GL)
   target_link_libraries(DrayvenRuntime PUBLIC OpenGL::GL)
@@ -106,6 +110,55 @@ if(DRAYVEN_BUILD_SHARED_ENGINE)
   endif()
 endif()
 
+if(DRAYVEN_BUILD_STATIC_ENGINE)
+  add_library(DrayvenEngineStatic STATIC
+    src/runtime/EngineShared.cpp
+    ${DRAYVEN_CORE_SOURCES}
+    ${DRAYVEN_RUNTIME_SOURCES})
+  target_include_directories(DrayvenEngineStatic PUBLIC include)
+  target_compile_definitions(DrayvenEngineStatic PUBLIC DRAYVEN_VERSION="${PROJECT_VERSION}")
+  if(DRAYVEN_GAME_SOURCES)
+    target_sources(DrayvenEngineStatic PRIVATE ${DRAYVEN_GAME_SOURCES})
+  endif()
+  if(TARGET SDL3::SDL3-static)
+    target_link_libraries(DrayvenEngineStatic PUBLIC SDL3::SDL3-static)
+  elseif(TARGET SDL3::SDL3)
+    target_link_libraries(DrayvenEngineStatic PUBLIC SDL3::SDL3)
+  endif()
+  if(TARGET OpenGL::GL)
+    target_link_libraries(DrayvenEngineStatic PUBLIC OpenGL::GL)
+  endif()
+  if(TARGET Vulkan::Vulkan)
+    target_link_libraries(DrayvenEngineStatic PUBLIC Vulkan::Vulkan)
+    target_compile_definitions(DrayvenEngineStatic PUBLIC DRAYVEN_HAS_VULKAN=1)
+  endif()
+  if(TARGET Eigen3::Eigen)
+    target_link_libraries(DrayvenEngineStatic PUBLIC Eigen3::Eigen)
+    target_compile_definitions(DrayvenEngineStatic PUBLIC DRAYVEN_HAS_EIGEN=1)
+  endif()
+  if(TARGET CURL::libcurl)
+    target_link_libraries(DrayvenEngineStatic PUBLIC CURL::libcurl)
+    target_compile_definitions(DrayvenEngineStatic PUBLIC DRAYVEN_HAS_CURL=1)
+  endif()
+  if(TARGET MbedTLS::mbedcrypto)
+    target_link_libraries(DrayvenEngineStatic PUBLIC MbedTLS::mbedcrypto)
+    target_compile_definitions(DrayvenEngineStatic PUBLIC DRAYVEN_HAS_MBEDTLS=1)
+  elseif(TARGET mbedcrypto)
+    target_link_libraries(DrayvenEngineStatic PUBLIC mbedcrypto)
+    target_compile_definitions(DrayvenEngineStatic PUBLIC DRAYVEN_HAS_MBEDTLS=1)
+  endif()
+  if(UNIX)
+    target_link_libraries(DrayvenEngineStatic PUBLIC ${CMAKE_DL_LIBS})
+  endif()
+  set_target_properties(DrayvenEngineStatic PROPERTIES OUTPUT_NAME "DrayvenEngine")
+  if(MSVC)
+    set_target_properties(DrayvenEngineStatic PROPERTIES OUTPUT_NAME "DrayvenEngineStatic")
+    target_compile_options(DrayvenEngineStatic PRIVATE /utf-8)
+  else()
+    target_compile_options(DrayvenEngineStatic PRIVATE -fvisibility=hidden)
+  endif()
+endif()
+
 add_executable(drayvenc src/cli/main.cpp)
 target_link_libraries(drayvenc PRIVATE DrayvenCore)
 if(MSVC)
@@ -119,28 +172,18 @@ if(MSVC)
 endif()
 
 if(DRAYVEN_BUILD_EDITOR)
-  add_library(drayven_rml_backend STATIC
-    src/editor/RmlBackend.cpp
-    "${DRAYVEN_RMLUI_SOURCE_DIR}/Backends/RmlUi_Platform_SDL.cpp"
-    "${DRAYVEN_RMLUI_SOURCE_DIR}/Backends/RmlUi_Renderer_GL3.cpp")
-  target_include_directories(drayven_rml_backend PRIVATE
-    include
-    "${DRAYVEN_RMLUI_SOURCE_DIR}/Backends")
-  target_compile_definitions(drayven_rml_backend PRIVATE RMLUI_SDL_VERSION_MAJOR=3)
-  target_link_libraries(drayven_rml_backend PUBLIC RmlUi::RmlUi SDL3::SDL3)
-  if(UNIX AND NOT APPLE)
-    target_link_libraries(drayven_rml_backend PRIVATE ${CMAKE_DL_LIBS})
-  endif()
-
   add_executable(DrayvenEditor
     src/editor/main.cpp
-    src/editor/EditorApp.cpp
-    src/editor/Persian.cpp)
+    src/editor/EditorApp.cpp)
   target_include_directories(DrayvenEditor PRIVATE
     include
-    "${DRAYVEN_RMLUI_SOURCE_DIR}/Backends")
-  target_link_libraries(DrayvenEditor PRIVATE DrayvenRuntime drayven_rml_backend RmlUi::RmlUi)
-  target_compile_definitions(DrayvenEditor PRIVATE DRAYVEN_EDITOR_ASSET_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+    "${DRAYVEN_NUKLEAR_SOURCE_DIR}")
+  if(TARGET SDL3::SDL3)
+    target_link_libraries(DrayvenEditor PRIVATE DrayvenCore SDL3::SDL3)
+  else()
+    target_link_libraries(DrayvenEditor PRIVATE DrayvenCore SDL3::SDL3-static)
+  endif()
+  target_compile_definitions(DrayvenEditor PRIVATE DRAYVEN_UI_NO_OPENGL=1)
   if(MSVC)
     target_compile_options(DrayvenEditor PRIVATE /utf-8)
   endif()
@@ -170,6 +213,9 @@ if(DRAYVEN_BUILD_SHARED_ENGINE)
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION bin
     ARCHIVE DESTINATION lib)
+endif()
+if(DRAYVEN_BUILD_STATIC_ENGINE)
+  install(TARGETS DrayvenEngineStatic ARCHIVE DESTINATION lib)
 endif()
 if(DRAYVEN_BUILD_EDITOR)
   install(TARGETS DrayvenEditor RUNTIME DESTINATION bin)
