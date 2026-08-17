@@ -20,7 +20,6 @@ bool AppDelegate::applicationDidFinishLaunching() {
 
     director->setDisplayStats(false);
     director->setAnimationInterval(1.0f / 60.0f);
-    director->setClearColor(Color4F(Color4B(24, 27, 32, 255)));
     view->setDesignResolutionSize(1440.0f, 900.0f, ResolutionPolicy::SHOW_ALL);
 
     auto* scene = StudioScene::create();
