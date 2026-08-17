@@ -170,7 +170,7 @@ jobs:
         shell: bash
         run: |
           python3 - <<'PY'
-          import json, os, pathlib, urllib.error, urllib.parse, urllib.request, zipfile
+          import json, os, pathlib, subprocess, urllib.error, urllib.parse, urllib.request, zipfile
 
           token = os.environ['GH_TOKEN']
           repo = os.environ['GITHUB_REPOSITORY']
@@ -196,6 +196,15 @@ jobs:
               with urllib.request.urlopen(req) as res:
                   return json.load(res) if res.length != 0 else {}
 
+          def download_artifact(url, output):
+              subprocess.run([
+                  'curl', '-fsSL',
+                  '-H', f'Authorization: Bearer {token}',
+                  '-H', 'Accept: application/vnd.github+json',
+                  '-H', 'X-GitHub-Api-Version: 2022-11-28',
+                  url, '-o', str(output)
+              ], check=True)
+
           run = get_json(f'{api}/actions/runs/{run_id}')
           target_sha = run['head_sha']
           artifacts = get_json(f'{api}/actions/runs/{run_id}/artifacts?per_page=100')['artifacts']
@@ -205,9 +214,7 @@ jobs:
               raise SystemExit(f'Expected 3 Drayven artifacts, found {len(selected)}')
           for a in selected:
               archive = out / f"{a['name']}.artifact.zip"
-              req = urllib.request.Request(a['archive_download_url'], headers=headers)
-              with urllib.request.urlopen(req) as res, archive.open('wb') as f:
-                  f.write(res.read())
+              download_artifact(a['archive_download_url'], archive)
               with zipfile.ZipFile(archive) as z:
                   z.extractall(out)
               archive.unlink()
@@ -258,7 +265,7 @@ jobs:
         shell: bash
         run: |
           python3 - <<'PY'
-          import json, os, pathlib, re, urllib.error, urllib.parse, urllib.request, zipfile
+          import json, os, pathlib, re, subprocess, urllib.error, urllib.parse, urllib.request, zipfile
 
           msg = os.environ['COMMIT_MESSAGE']
           run_match = re.search(r'source-run=(\d+)', msg)
@@ -289,9 +296,16 @@ jobs:
               with urllib.request.urlopen(req) as res:
                   return json.load(res) if res.length != 0 else {}
 
+          def download_artifact(url, output):
+              subprocess.run([
+                  'curl', '-fsSL',
+                  '-H', f'Authorization: Bearer {token}',
+                  '-H', 'Accept: application/vnd.github+json',
+                  '-H', 'X-GitHub-Api-Version: 2022-11-28',
+                  url, '-o', str(output)
+              ], check=True)
+
           run = get_json(f'{api}/actions/runs/{run_id}')
-          if run.get('conclusion') not in ('success', 'failure'):
-              print('source run state:', run.get('status'), run.get('conclusion'))
           target_sha = run['head_sha']
           artifacts = get_json(f'{api}/actions/runs/{run_id}/artifacts?per_page=100')['artifacts']
           out = pathlib.Path('release-assets'); out.mkdir(exist_ok=True)
@@ -300,9 +314,7 @@ jobs:
               raise SystemExit(f'Expected 3 Drayven artifacts, found {len(selected)}')
           for a in selected:
               archive = out / f"{a['name']}.artifact.zip"
-              req = urllib.request.Request(a['archive_download_url'], headers=headers)
-              with urllib.request.urlopen(req) as res, archive.open('wb') as f:
-                  f.write(res.read())
+              download_artifact(a['archive_download_url'], archive)
               with zipfile.ZipFile(archive) as z:
                   z.extractall(out)
               archive.unlink()
