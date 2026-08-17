@@ -9,9 +9,11 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   desktop:
+    if: github.event_name != 'push' || !contains(github.event.head_commit.message, '[release-only]')
     strategy:
       fail-fast: false
       matrix:
@@ -95,6 +97,7 @@ jobs:
           if-no-files-found: error
 
   android:
+    if: github.event_name != 'push' || !contains(github.event.head_commit.message, '[release-only]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -155,18 +158,186 @@ jobs:
           if-no-files-found: error
 
   release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[release-only]')
     needs: [desktop, android]
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_RUN_ID: ${{ github.run_id }}
+      RELEASE_TAG: v0.2.${{ github.run_number }}
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: release-assets
-          merge-multiple: true
-      - name: Publish automatic release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v0.2.${{ github.run_number }}
-          name: Drayven Engine v0.2.${{ github.run_number }}
-          generate_release_notes: true
-          files: release-assets/*.zip
+      - name: Publish release through GitHub API
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, urllib.error, urllib.parse, urllib.request, zipfile
+
+          token = os.environ['GH_TOKEN']
+          repo = os.environ['GITHUB_REPOSITORY']
+          run_id = os.environ['SOURCE_RUN_ID']
+          tag = os.environ['RELEASE_TAG']
+          api = f'https://api.github.com/repos/{repo}'
+          headers = {
+              'Authorization': f'Bearer {token}',
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+              'User-Agent': 'DrayvenEngine-Release'
+          }
+
+          def get_json(url):
+              req = urllib.request.Request(url, headers=headers)
+              with urllib.request.urlopen(req) as res:
+                  return json.load(res)
+
+          def json_request(url, payload, method='POST'):
+              body = json.dumps(payload).encode()
+              h = dict(headers); h['Content-Type'] = 'application/json'
+              req = urllib.request.Request(url, data=body, headers=h, method=method)
+              with urllib.request.urlopen(req) as res:
+                  return json.load(res) if res.length != 0 else {}
+
+          run = get_json(f'{api}/actions/runs/{run_id}')
+          target_sha = run['head_sha']
+          artifacts = get_json(f'{api}/actions/runs/{run_id}/artifacts?per_page=100')['artifacts']
+          out = pathlib.Path('release-assets'); out.mkdir(exist_ok=True)
+          selected = [a for a in artifacts if a['name'].startswith('DrayvenEngine-') and not a.get('expired')]
+          if len(selected) < 3:
+              raise SystemExit(f'Expected 3 Drayven artifacts, found {len(selected)}')
+          for a in selected:
+              archive = out / f"{a['name']}.artifact.zip"
+              req = urllib.request.Request(a['archive_download_url'], headers=headers)
+              with urllib.request.urlopen(req) as res, archive.open('wb') as f:
+                  f.write(res.read())
+              with zipfile.ZipFile(archive) as z:
+                  z.extractall(out)
+              archive.unlink()
+
+          release = None
+          try:
+              release = get_json(f'{api}/releases/tags/{urllib.parse.quote(tag)}')
+          except urllib.error.HTTPError as e:
+              if e.code != 404: raise
+          if release is None:
+              release = json_request(f'{api}/releases', {
+                  'tag_name': tag,
+                  'target_commitish': target_sha,
+                  'name': f'Drayven Engine {tag}',
+                  'body': 'Automated Windows, Linux and Android ARM64 SDK release.',
+                  'draft': False,
+                  'prerelease': False,
+                  'generate_release_notes': True
+              })
+          else:
+              for asset in release.get('assets', []):
+                  if asset['name'].startswith('DrayvenEngine-'):
+                      req = urllib.request.Request(f"{api}/releases/assets/{asset['id']}", headers=headers, method='DELETE')
+                      urllib.request.urlopen(req).read()
+
+          upload_base = release['upload_url'].split('{', 1)[0]
+          files = sorted(out.glob('DrayvenEngine-*.zip'))
+          if len(files) < 3:
+              raise SystemExit(f'Expected 3 release ZIPs, found {len(files)}')
+          for file in files:
+              url = upload_base + '?' + urllib.parse.urlencode({'name': file.name})
+              h = dict(headers); h['Content-Type'] = 'application/zip'
+              req = urllib.request.Request(url, data=file.read_bytes(), headers=h, method='POST')
+              with urllib.request.urlopen(req) as res:
+                  asset = json.load(res)
+                  print('uploaded', asset['name'], asset['browser_download_url'])
+          print('release', release['html_url'])
+          PY
+
+  recovery_release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[release-only]')
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+    steps:
+      - name: Recover release from an existing successful run
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, re, urllib.error, urllib.parse, urllib.request, zipfile
+
+          msg = os.environ['COMMIT_MESSAGE']
+          run_match = re.search(r'source-run=(\d+)', msg)
+          tag_match = re.search(r'tag=([^\s]+)', msg)
+          if not run_match or not tag_match:
+              raise SystemExit('release-only commit must include source-run=<id> tag=<tag>')
+          run_id = run_match.group(1)
+          tag = tag_match.group(1)
+          token = os.environ['GH_TOKEN']
+          repo = os.environ['GITHUB_REPOSITORY']
+          api = f'https://api.github.com/repos/{repo}'
+          headers = {
+              'Authorization': f'Bearer {token}',
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+              'User-Agent': 'DrayvenEngine-Release-Recovery'
+          }
+
+          def get_json(url):
+              req = urllib.request.Request(url, headers=headers)
+              with urllib.request.urlopen(req) as res:
+                  return json.load(res)
+
+          def json_request(url, payload, method='POST'):
+              body = json.dumps(payload).encode()
+              h = dict(headers); h['Content-Type'] = 'application/json'
+              req = urllib.request.Request(url, data=body, headers=h, method=method)
+              with urllib.request.urlopen(req) as res:
+                  return json.load(res) if res.length != 0 else {}
+
+          run = get_json(f'{api}/actions/runs/{run_id}')
+          if run.get('conclusion') not in ('success', 'failure'):
+              print('source run state:', run.get('status'), run.get('conclusion'))
+          target_sha = run['head_sha']
+          artifacts = get_json(f'{api}/actions/runs/{run_id}/artifacts?per_page=100')['artifacts']
+          out = pathlib.Path('release-assets'); out.mkdir(exist_ok=True)
+          selected = [a for a in artifacts if a['name'].startswith('DrayvenEngine-') and not a.get('expired')]
+          if len(selected) < 3:
+              raise SystemExit(f'Expected 3 Drayven artifacts, found {len(selected)}')
+          for a in selected:
+              archive = out / f"{a['name']}.artifact.zip"
+              req = urllib.request.Request(a['archive_download_url'], headers=headers)
+              with urllib.request.urlopen(req) as res, archive.open('wb') as f:
+                  f.write(res.read())
+              with zipfile.ZipFile(archive) as z:
+                  z.extractall(out)
+              archive.unlink()
+
+          release = None
+          try:
+              release = get_json(f'{api}/releases/tags/{urllib.parse.quote(tag)}')
+          except urllib.error.HTTPError as e:
+              if e.code != 404: raise
+          if release is None:
+              release = json_request(f'{api}/releases', {
+                  'tag_name': tag,
+                  'target_commitish': target_sha,
+                  'name': f'Drayven Engine {tag}',
+                  'body': 'Windows x64, Linux x64 and Android ARM64 SDKs from validated GitHub Actions artifacts.',
+                  'draft': False,
+                  'prerelease': False,
+                  'generate_release_notes': True
+              })
+          else:
+              for asset in release.get('assets', []):
+                  if asset['name'].startswith('DrayvenEngine-'):
+                      req = urllib.request.Request(f"{api}/releases/assets/{asset['id']}", headers=headers, method='DELETE')
+                      urllib.request.urlopen(req).read()
+
+          upload_base = release['upload_url'].split('{', 1)[0]
+          files = sorted(out.glob('DrayvenEngine-*.zip'))
+          if len(files) < 3:
+              raise SystemExit(f'Expected 3 release ZIPs, found {len(files)}')
+          for file in files:
+              url = upload_base + '?' + urllib.parse.urlencode({'name': file.name})
+              h = dict(headers); h['Content-Type'] = 'application/zip'
+              req = urllib.request.Request(url, data=file.read_bytes(), headers=h, method='POST')
+              with urllib.request.urlopen(req) as res:
+                  asset = json.load(res)
+                  print('uploaded', asset['name'], asset['browser_download_url'])
+          print('release', release['html_url'])
+          PY
